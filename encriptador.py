@@ -1,53 +1,152 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox
 from cryptography.fernet import Fernet
+import os
 
-# Genera una clave y la guarda en un archivo
-def generar_clave():
-    clave = Fernet.generate_key()
-    with open("clave.key", "wb") as archivo_clave:
-        archivo_clave.write(clave)
+# -------- Funciones de lógica --------
 
-# Carga la clave desde el archivo
-def cargar_clave():
-    with open("clave.key", "rb") as archivo_clave:
-        return archivo_clave.read()
+def cargar_clave_desde_texto(clave_texto):
+    """Codifica la clave si es válida."""
+    try:
+        return clave_texto.encode()
+    except Exception:
+        messagebox.showerror("Error", "Clave inválida")
+        return None
 
-# Encripta el archivo
-def encriptar_archivo(nombre_archivo):
-    clave = cargar_clave()
-    f = Fernet(clave)
+def encriptar_archivo(ruta_archivo, clave_texto, ventana):
+    """Encripta un archivo con clave proporcionada o generada."""
+    try:
+        existe_clave = False
 
-    with open(nombre_archivo, "rb") as file:
-        datos = file.read()
+        if not clave_texto.strip():
+            clave = Fernet.generate_key()
+            
+            # Extraer el nombre base del archivo original sin extensión
+            nombre_base = os.path.splitext(os.path.basename(ruta_archivo))[0]
+            nombre_clave = f"{nombre_base}_clave.key"
+            
+            with open(nombre_clave, "wb") as archivo_clave:
+                archivo_clave.write(clave)
+            ruta_clave = os.path.abspath(nombre_clave)
+            messagebox.showinfo("Clave generada", f"Se generó una clave automáticamente y se guardó en '{nombre_clave}'.")
+        else:
+            clave = cargar_clave_desde_texto(clave_texto)
+            existe_clave = True
 
-    datos_encriptados = f.encrypt(datos)
+        if not clave:
+            return
 
-    with open(nombre_archivo + ".enc", "wb") as file_encriptado:
-        file_encriptado.write(datos_encriptados)
+        fernet = Fernet(clave)
 
-    print(f"Archivo '{nombre_archivo}' encriptado exitosamente.")
+        with open(ruta_archivo, "rb") as archivo_entrada:
+            datos_originales = archivo_entrada.read()
 
-# Desencripta el archivo
-def desencriptar_archivo(nombre_archivo_encriptado, nombre_archivo_salida):
-    clave = cargar_clave()
-    f = Fernet(clave)
+        datos_encriptados = fernet.encrypt(datos_originales)
 
-    with open(nombre_archivo_encriptado, "rb") as file_encriptado:
-        datos_encriptados = file_encriptado.read()
+        ruta_salida = ruta_archivo + ".enc"
+        with open(ruta_salida, "wb") as archivo_salida:
+            archivo_salida.write(datos_encriptados)
 
-    datos_desencriptados = f.decrypt(datos_encriptados)
+        if existe_clave:
+            estado_programa.set(f"Archivo encriptado en:\n{ruta_salida}")
+        else:
+            estado_programa.set(
+                f"Archivo encriptado en:\n{ruta_salida}\nClave generada en:\n{ruta_clave}"
+            )
 
-    with open(nombre_archivo_salida, "wb") as file_salida:
-        file_salida.write(datos_desencriptados)
+        ventana.destroy()
 
-    print(f"Archivo desencriptado como '{nombre_archivo_salida}'.")
+    except Exception as error:
+        messagebox.showerror("Error", f"No se pudo encriptar:\n{error}")
 
-# ----------- USO -----------
-if __name__ == "__main__":
-    # Solo la primera vez, generar la clave
-    generar_clave()
+def desencriptar_archivo(ruta_archivo, clave_texto, ventana):
+    """Desencripta un archivo con la clave proporcionada."""
+    try:
+        fernet = Fernet(clave_texto)
 
-    # Encriptar archivo
-    encriptar_archivo("documento.txt")  # <- Cambia esto por tu archivo
+        with open(ruta_archivo, "rb") as archivo_entrada:
+            datos_encriptados = archivo_entrada.read()
 
-    # Desencriptar archivo
-    desencriptar_archivo("documento.txt.enc", "documento_desencriptado.txt")
+        datos_desencriptados = fernet.decrypt(datos_encriptados)
+
+        ruta_salida = ruta_archivo.replace(".txt.enc", "") + "_desencriptado.txt"
+        with open(ruta_salida, "wb") as archivo_salida:
+            archivo_salida.write(datos_desencriptados)
+
+        estado_programa.set(f"Archivo desencriptado:\n{ruta_salida}")
+        ventana.destroy()
+
+    except Exception as error:
+        messagebox.showerror("Error", f"No se pudo desencriptar:\n{error}")
+
+# -------- Ventanas emergentes --------
+
+def mostrar_ventana_encriptar():
+    ventana = tk.Toplevel(root)
+    ventana.title("Encriptar Archivo")
+
+    tk.Label(ventana, text="Ruta del archivo:").pack()
+    entrada_ruta = tk.Entry(ventana, width=50)
+    entrada_ruta.pack()
+
+    tk.Button(
+        ventana,
+        text="Buscar",
+        command=lambda: entrada_ruta.insert(0, filedialog.askopenfilename())
+    ).pack()
+
+    tk.Label(ventana, text="Clave (Base64 - 44 caracteres):").pack()
+    entrada_clave = tk.Entry(ventana, width=50)
+    entrada_clave.pack()
+
+    tk.Button(
+        ventana,
+        text="Encriptar",
+        command=lambda: encriptar_archivo(entrada_ruta.get(), entrada_clave.get(), ventana)
+    ).pack(pady=10)
+
+def mostrar_ventana_desencriptar():
+    ventana = tk.Toplevel(root)
+    ventana.title("Desencriptar Archivo")
+
+    tk.Label(ventana, text="Ruta del archivo encriptado:").pack()
+    entrada_ruta = tk.Entry(ventana, width=50)
+    entrada_ruta.pack()
+
+    tk.Button(
+        ventana,
+        text="Buscar",
+        command=lambda: entrada_ruta.insert(0, filedialog.askopenfilename())
+    ).pack()
+
+    tk.Label(ventana, text="Clave (Base64 - 44 caracteres):").pack()
+    entrada_clave = tk.Entry(ventana, width=50)
+    entrada_clave.pack()
+
+    tk.Button(
+        ventana,
+        text="Desencriptar",
+        command=lambda: desencriptar_archivo(entrada_ruta.get(), entrada_clave.get(), ventana)
+    ).pack(pady=10)
+
+# -------- Interfaz principal --------
+
+root = tk.Tk()
+root.title("Encriptador de Archivos")
+root.geometry("600x300")
+
+estado_programa = tk.StringVar()
+estado_programa.set("Usa el menú para seleccionar una opción")
+
+barra_menu = tk.Menu(root)
+menu_archivo = tk.Menu(barra_menu, tearoff=0)
+menu_archivo.add_command(label="Encriptar Archivo", command=mostrar_ventana_encriptar)
+menu_archivo.add_command(label="Desencriptar Archivo", command=mostrar_ventana_desencriptar)
+barra_menu.add_cascade(label="Archivo", menu=menu_archivo)
+
+root.config(menu=barra_menu)
+
+tk.Label(root, textvariable=estado_programa, font=("Arial", 14)).pack(pady=50)
+
+# -------- Inicio --------
+root.mainloop()
